@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Rozmowa</title>
+<meta name="theme-color" content="#b0202e">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<style>
+:root{
+  --bg:#f6f4ee;--card:#ffffff;--ink:#1d2a24;--muted:#6b7a72;--line:#e2ded3;
+  --brand:#b0202e;--brand2:#ffffff;--me:#fbe3e5;--fix:#fff4d6;--fixline:#e9c45a;--err:#b3261e;
+}
+@media (prefers-color-scheme:dark){
+  :root{--bg:#101614;--card:#18211e;--ink:#e8efe9;--muted:#93a39a;--line:#2a3631;
+  --me:#3a1d21;--fix:#3a3220;--fixline:#a8893a;}
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{background:var(--bg);color:var(--ink);font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;display:flex;flex-direction:column}
+header{display:flex;align-items:center;gap:.5rem;padding:.6rem 1rem;background:var(--brand);color:#fff;padding-top:max(.6rem,env(safe-area-inset-top))}
+header h1{font-size:1.15rem;margin:0;flex:1;letter-spacing:.02em}
+header h1 span{color:var(--brand2)}
+header button{background:transparent;border:1px solid rgba(255,255,255,.5);color:#fff;border-radius:8px;padding:.35rem .6rem;font-size:.85rem}
+#scenarioBar{display:flex;gap:.4rem;overflow-x:auto;padding:.6rem 1rem;border-bottom:1px solid var(--line);scrollbar-width:none}
+#scenarioBar::-webkit-scrollbar{display:none}
+.chip{flex:none;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:999px;padding:.35rem .8rem;font-size:.85rem}
+.chip.on{background:var(--brand);color:#fff;border-color:var(--brand)}
+#chat{flex:1;overflow-y:auto;padding:1rem;display:flex;flex-direction:column;gap:.7rem}
+.msg{max-width:88%;padding:.6rem .8rem;border-radius:14px;background:var(--card);border:1px solid var(--line);position:relative}
+.msg.me{align-self:flex-end;background:var(--me);border-color:transparent}
+.msg.bot{align-self:flex-start}
+.msg .tr{color:var(--muted);font-size:.85rem;margin-top:.3rem;display:none}
+.msg.showtr .tr{display:block}
+.msg .tools{display:flex;gap:.6rem;margin-top:.35rem}
+.msg .tools button{background:none;border:none;color:var(--brand);font-size:.8rem;padding:0;cursor:pointer}
+.fix{align-self:flex-end;max-width:88%;background:var(--fix);border-left:4px solid var(--fixline);border-radius:10px;padding:.5rem .7rem;font-size:.9rem}
+.fix b{display:block;font-size:.75rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+.fix .good{font-weight:600;margin:.15rem 0}
+.fix .why{color:var(--muted)}
+.ok{align-self:flex-end;font-size:.8rem;color:var(--brand)}
+.sys{align-self:center;color:var(--muted);font-size:.85rem;text-align:center;max-width:90%}
+.sys.err{color:var(--err)}
+footer{border-top:1px solid var(--line);background:var(--card);padding:.6rem;padding-bottom:max(.6rem,env(safe-area-inset-bottom))}
+#interim{min-height:1.2em;color:var(--muted);font-size:.9rem;padding:0 .3rem .4rem;font-style:italic}
+.row{display:flex;gap:.5rem;align-items:center}
+#text{flex:1;border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:999px;padding:.65rem .9rem;font-size:1rem}
+#send{border:none;background:var(--brand);color:#fff;border-radius:999px;padding:.65rem .9rem;font-size:.95rem}
+#mic{width:64px;height:64px;flex:none;border-radius:50%;border:none;background:var(--brand);color:#fff;font-size:1.6rem;box-shadow:0 2px 8px rgba(0,0,0,.2)}
+#mic.listening{background:var(--err);animation:pulse 1s infinite}
+#mic:disabled{opacity:.5}
+@keyframes pulse{50%{transform:scale(1.07)}}
+dialog{border:none;border-radius:14px;background:var(--card);color:var(--ink);width:min(94vw,460px);padding:1.1rem}
+dialog::backdrop{background:rgba(0,0,0,.45)}
+dialog h2{margin:.1rem 0 .8rem;font-size:1.1rem}
+label{display:block;font-size:.85rem;color:var(--muted);margin:.7rem 0 .25rem}
+dialog input,dialog select{width:100%;padding:.55rem;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font-size:.95rem}
+.check{display:flex;align-items:center;gap:.5rem;color:var(--ink);font-size:.95rem}
+.check input{width:auto}
+.hint{font-size:.8rem;color:var(--muted);margin:.3rem 0 0}
+.hint a{color:var(--brand)}
+.dlgbtns{display:flex;gap:.5rem;justify-content:flex-end;margin-top:1rem}
+.dlgbtns button{border:none;border-radius:8px;padding:.55rem 1rem;font-size:.95rem}
+.primary{background:var(--brand);color:#fff}
+.secondary{background:var(--line);color:var(--ink)}
+.danger{background:none;color:var(--err);margin-right:auto}
+</style>
+</head>
+<body>
+<header>
+  <h1>Rozmowa <span>🇵🇱</span></h1>
+  <button id="newBtn" title="Nowa rozmowa">Nowa</button>
+  <button id="setBtn" title="Settings">⚙︎</button>
+</header>
+<div id="scenarioBar"></div>
+<main id="chat" aria-live="polite"></main>
+<footer>
+  <div id="interim"></div>
+  <div class="row">
+    <input id="text" placeholder="Mów albo pisz po polsku…" autocomplete="off" enterkeyhint="send">
+    <button id="send">➤</button>
+    <button id="mic" aria-label="Mów">🎤</button>
+  </div>
+</footer>
+
+<dialog id="settings">
+  <h2>Settings</h2>
+  <label for="apiKey">Gemini API key</label>
+  <input id="apiKey" type="password" placeholder="AIza…" autocomplete="off">
+  <p class="hint">Free from <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>. Stored only on this device.</p>
+  <label for="model">Model</label>
+  <input id="model" placeholder="gemini-flash-latest">
+  <label for="level">Your level</label>
+  <select id="level">
+    <option value="beginner">Początkujący (beginner)</option>
+    <option value="intermediate">Średniozaawansowany</option>
+    <option value="advanced">Zaawansowany</option>
+  </select>
+  <label for="voice">Voice (Polish)</label>
+  <select id="voice"></select>
+  <p class="hint" id="voiceHint"></p>
+  <label for="rate">Speech speed: <span id="rateVal"></span></label>
+  <input id="rate" type="range" min="0.6" max="1.2" step="0.05">
+  <label for="formality">Form of address</label>
+  <select id="formality">
+    <option value="auto">Whatever suits the scenario</option>
+    <option value="ty">Informal (ty)</option>
+    <option value="pan">Formal (Pan / Pani)</option>
+  </select>
+  <label class="check"><input id="speakFix" type="checkbox"> Read corrections aloud</label>
+  <label class="check"><input id="autoTr" type="checkbox"> Always show English translation</label>
+  <label class="check"><input id="autoMic" type="checkbox"> Hands-free (mic reopens after each reply)</label>
+  <div class="dlgbtns">
+    <button class="secondary" id="testVoice">Test voice</button>
+    <button class="primary" id="saveSet">Save</button>
+  </div>
+</dialog>
+
+<script>
+"use strict";
+const $ = s => document.querySelector(s);
+const LS = {
+  get(k, d){ try{ const v = localStorage.getItem("rozmowa."+k); return v===null ? d : JSON.parse(v); }catch{ return d; } },
+  set(k, v){ try{ localStorage.setItem("rozmowa."+k, JSON.stringify(v)); }catch{} }
+};
+
+const SCENARIOS = [
+  {id:"free",     label:"Pogadanka",      en:"free chat",       prompt:"A relaxed, friendly chat about everyday life: ask the learner about their day, work, hobbies and plans."},
+  {id:"intro",    label:"Poznajmy się",   en:"introductions",   prompt:"Meeting someone new at a friend's imieniny party in Warsaw. Exchange names, where you're from, work, family, why they're learning Polish."},
+  {id:"piekarnia",label:"W piekarni",     en:"bakery",          prompt:"You work in a small piekarnia in Kraków. The learner is buying bread, bułki and a pączek. Ask what they'd like, how many, whether they want a bag."},
+  {id:"bar",      label:"Bar mleczny",    en:"milk bar",        prompt:"You are behind the counter of a bar mleczny. The learner orders lunch: pierogi, żurek, kotlet schabowy, kompot. Mention what's left today."},
+  {id:"sklep",    label:"W sklepie",      en:"corner shop",     prompt:"You are a cashier at a Żabka. The learner buys a few things; ask about a bag, the app, card or cash."},
+  {id:"pkp",      label:"Na dworcu",      en:"train station",   prompt:"You work at the PKP ticket office in Warszawa Centralna. The learner buys a ticket to Gdańsk: times, return, seat, discounts, platform."},
+  {id:"taxi",     label:"W taksówce",     en:"taxi ride",       prompt:"You are a chatty taxi driver in Wrocław driving the learner from the airport to the Rynek. Small talk about the city, weather, football."},
+  {id:"apteka",   label:"W aptece",       en:"pharmacy",        prompt:"You are a pharmacist. The learner describes a minor ailment (cold, headache) and asks for something to help."},
+  {id:"droga",    label:"Pytanie o drogę",en:"directions",      prompt:"The learner is lost in Gdańsk and asks you, a local, for directions to the Długi Targ and the nearest bankomat."},
+  {id:"praca",    label:"W pracy",        en:"work",            prompt:"A casual chat with a Polish colleague about work, the week and weekend plans (działka, grill, góry)."}
+];
+
+const state = {
+  history: LS.get("history", []),   // [{role:'user'|'model', text, fix?, tr?}]
+  scenario: LS.get("scenario", "free"),
+  busy: false, listening: false
+};
+const cfg = Object.assign({
+  apiKey:"", model:"gemini-flash-latest", level:"beginner", voice:"", rate:0.95,
+  speakFix:true, autoTr:false, autoMic:false, formality:"auto"
+}, LS.get("cfg", {}));
+
+/* ---------- scenarios ---------- */
+function renderScenarios(){
+  const bar = $("#scenarioBar"); bar.innerHTML = "";
+  for(const s of SCENARIOS){
+    const b = document.createElement("button");
+    b.className = "chip" + (s.id===state.scenario ? " on" : "");
+    b.textContent = s.label; b.title = s.en;
+    b.onclick = () => {
+      if(s.id===state.scenario) return;
+      if(state.history.length && !confirm("Start a new conversation: " + s.label + "?")) return;
+      state.scenario = s.id; LS.set("scenario", s.id); newConversation();
+    };
+    bar.appendChild(b);
+  }
+}
+const scen = () => SCENARIOS.find(s=>s.id===state.scenario) || SCENARIOS[0];
+
+/* ---------- chat rendering ---------- */
+const chat = $("#chat");
+function el(cls, html){ const d=document.createElement("div"); d.className=cls; if(html!==undefined) d.innerHTML=html; return d; }
+function esc(s){ return String(s??"").replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+function scrollDown(){ chat.scrollTop = chat.scrollHeight; }
+
+function renderMsg(m){
+  if(m.role==="user"){
+    chat.appendChild(el("msg me", esc(m.text)));
+    if(m.fix && m.fix.hasError){
+      const f = el("fix");
+      f.innerHTML = `<b>Lepiej powiedzieć</b><div class="good">${esc(m.fix.corrected)}</div><div class="why">${esc(m.fix.explanation)}</div>`;
+      const btn = document.createElement("button");
+      btn.textContent = "🔊"; btn.style.cssText="background:none;border:none;padding:0;margin-top:.2rem;cursor:pointer";
+      btn.onclick = () => speak(m.fix.corrected);
+      f.appendChild(btn);
+      chat.appendChild(f);
+    } else if(m.fix){
+      chat.appendChild(el("ok", "✓ Świetnie"));
+    }
+  } else {
+    const d = el("msg bot" + (cfg.autoTr ? " showtr" : ""));
+    d.innerHTML = `<div>${esc(m.text)}</div><div class="tr">${esc(m.tr||"")}</div>`;
+    const tools = el("tools");
+    const play = document.createElement("button"); play.textContent="🔊 Posłuchaj"; play.onclick=()=>speak(m.text);
+    const slow = document.createElement("button"); slow.textContent="🐢 Wolniej"; slow.onclick=()=>speak(m.text, 0.7);
+    const tr = document.createElement("button"); tr.textContent="EN"; tr.onclick=()=>d.classList.toggle("showtr");
+    tools.append(play, slow, tr); d.appendChild(tools);
+    chat.appendChild(d);
+  }
+}
+function sys(text, err){ chat.appendChild(el("sys"+(err?" err":""), esc(text))); scrollDown(); }
+function renderAll(){
+  chat.innerHTML = "";
+  sys(`Scenariusz: ${scen().label} (${scen().en}) · poziom: ${cfg.level}`);
+  state.history.forEach(renderMsg);
+  scrollDown();
+}
+
+/* ---------- voices / TTS ---------- */
+let voices = [];
+function loadVoices(){
+  voices = speechSynthesis.getVoices().filter(v => /^pl([-_]|$)/i.test(v.lang));
+  // Prefer Google / natural voices first
+  voices.sort((a,b)=> score(b)-score(a));
+  const sel = $("#voice"); sel.innerHTML = "";
+  for(const v of voices){
+    const o = document.createElement("option"); o.value = v.name; o.textContent = `${v.name}${v.localService?"":" (online)"}`;
+    sel.appendChild(o);
+  }
+  if(!voices.length){
+    const o=document.createElement("option"); o.textContent="No Polish voice found"; sel.appendChild(o);
+    $("#voiceHint").textContent = "Install one: Android Settings → Accessibility → Text-to-speech → Google → Install voice data → Polski.";
+  } else {
+    $("#voiceHint").textContent = voices.length + " Polish voice(s) found.";
+    if(cfg.voice && voices.some(v=>v.name===cfg.voice)) sel.value = cfg.voice;
+  }
+}
+function score(v){ const n=v.name.toLowerCase(); return (n.includes("natural")?3:0)+(n.includes("google")?2:0)+(n.includes("online")?1:0); }
+function pickVoice(){ return voices.find(v=>v.name===cfg.voice) || voices[0] || null; }
+function speak(text, rate){
+  return new Promise(res=>{
+    if(!("speechSynthesis" in window) || !text){ res(); return; }
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    const v = pickVoice(); if(v) u.voice = v;
+    u.lang = "pl-PL"; u.rate = rate || cfg.rate;
+    u.onend = u.onerror = () => res();
+    speechSynthesis.speak(u);
+  });
+}
+if("speechSynthesis" in window){ loadVoices(); speechSynthesis.onvoiceschanged = loadVoices; }
+
+/* ---------- speech recognition ---------- */
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let rec = null;
+if(SR){
+  rec = new SR(); rec.lang = "pl-PL"; rec.interimResults = true; rec.continuous = false; rec.maxAlternatives = 1;
+  let finalText = "";
+  rec.onstart = () => { state.listening = true; finalText=""; $("#mic").classList.add("listening"); $("#interim").textContent = "Słucham…"; };
+  rec.onresult = e => {
+    let interim = "";
+    for(let i=e.resultIndex;i<e.results.length;i++){
+      const t = e.results[i][0].transcript;
+      if(e.results[i].isFinal) finalText += t; else interim += t;
+    }
+    $("#interim").textContent = (finalText + interim) || "Słucham…";
+  };
+  rec.onerror = e => { if(e.error!=="no-speech" && e.error!=="aborted") sys("Mic error: "+e.error, true); };
+  rec.onend = () => {
+    state.listening = false; $("#mic").classList.remove("listening"); $("#interim").textContent = "";
+    const t = finalText.trim(); if(t) send(t);
+  };
+} else {
+  $("#mic").disabled = true; $("#mic").title = "Speech recognition not supported — use Chrome";
+}
+$("#mic").onclick = () => {
+  if(!rec || state.busy) return;
+  if(state.listening){ rec.stop(); return; }
+  speechSynthesis.cancel();
+  try{ rec.start(); }catch{}
+};
+
+/* ---------- Gemini ---------- */
+function systemPrompt(){
+  const lvl = {
+    beginner:"The learner is a BEGINNER (A1–A2). Use very short, simple sentences and everyday vocabulary, mostly present tense. One question at a time.",
+    intermediate:"The learner is INTERMEDIATE (B1–B2). Use natural everyday Polish at a moderate pace, with past and future tenses and both aspects.",
+    advanced:"The learner is ADVANCED (C1). Speak completely naturally, with idioms, diminutives and colloquial forms."
+  }[cfg.level];
+  const form = {
+    auto:"Use the form of address a Pole would naturally use in this scenario (Pan/Pani with staff and strangers, ty with friends and colleagues).",
+    ty:"Address the learner informally with ty.",
+    pan:"Address the learner formally as Pan (assume male unless they indicate otherwise) with third-person verbs."
+  }[cfg.formality||"auto"];
+  return `You are a friendly native speaker of Polish helping an English speaker practise spoken conversation.
+SCENARIO: ${scen().prompt}
+${lvl}
+${form}
+Rules:
+- Always reply in natural, contemporary Polish as spoken in Poland.
+- Keep your reply short (1–3 sentences) and end with something that keeps the conversation going, like a real person would.
+- Stay in character for the scenario. If the learner writes in English or is stuck, gently help them say it in Polish.
+- The learner's text comes from speech recognition, so IGNORE missing punctuation, capitalisation, and missing Polish diacritics (ą ć ę ł ń ó ś ź ż) that are only transcription artefacts. Only correct real errors: wrong case endings, gender/number agreement, verb conjugation, perfective vs imperfective aspect, wrong preposition or case after a preposition, word order a Pole would find unnatural, wrong form of address, or wrong word choice.
+- If their message is fine or only slightly informal-but-natural, set hasError to false.
+- explanation: one short sentence in ENGLISH naming the rule (e.g. "After 'do' use the genitive: do Krakowa").
+- translation: English translation of YOUR reply.
+Return only JSON matching the schema.`;
+}
+const SCHEMA = {
+  type:"OBJECT",
+  properties:{
+    hasError:{type:"BOOLEAN"},
+    corrected:{type:"STRING", description:"Natural, correct Polish version of the learner's message (same meaning). Empty if no error."},
+    explanation:{type:"STRING", description:"Short English explanation of the correction. Empty if no error."},
+    reply:{type:"STRING", description:"Your conversational reply in Polish."},
+    translation:{type:"STRING", description:"English translation of reply."}
+  },
+  required:["hasError","corrected","explanation","reply","translation"]
+};
+
+async function callGemini(contents){
+  const model = (cfg.model||"gemini-flash-latest").trim();
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
+  const r = await fetch(url, {
+    method:"POST",
+    headers:{"Content-Type":"application/json","x-goog-api-key":cfg.apiKey},
+    body: JSON.stringify({
+      systemInstruction:{parts:[{text:systemPrompt()}]},
+      contents,
+      generationConfig:{responseMimeType:"application/json", responseSchema:SCHEMA, temperature:0.8}
+    })
+  });
+  const data = await r.json().catch(()=>({}));
+  if(!r.ok) throw new Error(data?.error?.message || ("HTTP "+r.status));
+  const txt = data?.candidates?.[0]?.content?.parts?.map(p=>p.text||"").join("") || "";
+  if(!txt) throw new Error("Empty response" + (data?.promptFeedback?.blockReason ? " ("+data.promptFeedback.blockReason+")" : ""));
+  return JSON.parse(txt);
+}
+function toContents(extraUser){
+  const c = state.history.map(m=>({role:m.role, parts:[{text:m.text}]}));
+  if(extraUser) c.push({role:"user", parts:[{text:extraUser}]});
+  // Gemini requires the first turn to be from the user
+  if(c.length && c[0].role!=="user") c.unshift({role:"user", parts:[{text:"(Start the conversation.)"}]});
+  return c;
+}
+
+async function send(text){
+  text = (text||"").trim();
+  if(!text || state.busy) return;
+  if(!cfg.apiKey){ openSettings(); sys("Add your free Gemini API key first.", true); return; }
+  state.busy = true; $("#mic").disabled = true;
+  const um = {role:"user", text};
+  state.history.push(um); renderMsg(um); scrollDown();
+  const thinking = el("sys","…"); chat.appendChild(thinking); scrollDown();
+  try{
+    const out = await callGemini(toContents());
+    thinking.remove();
+    um.fix = {hasError:!!out.hasError && !!out.corrected, corrected:out.corrected||"", explanation:out.explanation||""};
+    // re-render the user's message with its correction
+    renderAll();
+    const bm = {role:"model", text:out.reply||"", tr:out.translation||""};
+    state.history.push(bm); renderMsg(bm); scrollDown();
+    LS.set("history", state.history);
+    if(um.fix.hasError && cfg.speakFix) await speak(um.fix.corrected);
+    await speak(bm.text);
+    if(cfg.autoMic && rec) { try{ rec.start(); }catch{} }
+  }catch(e){
+    thinking.remove();
+    state.history.pop(); LS.set("history", state.history); renderAll();
+    sys("Error: " + e.message, true);
+    $("#text").value = text;
+  }finally{
+    state.busy = false; if(rec) $("#mic").disabled = false;
+  }
+}
+
+async function opener(){
+  if(!cfg.apiKey) return;
+  state.busy = true;
+  const thinking = el("sys","…"); chat.appendChild(thinking);
+  try{
+    const out = await callGemini([{role:"user", parts:[{text:"(Start the conversation yourself in character. There is no learner message to correct: set hasError false, corrected and explanation empty.)"}]}]);
+    thinking.remove();
+    const bm = {role:"model", text:out.reply, tr:out.translation};
+    state.history.push(bm); renderMsg(bm); scrollDown(); LS.set("history", state.history);
+    await speak(bm.text);
+  }catch(e){ thinking.remove(); sys("Error: "+e.message, true); }
+  finally{ state.busy = false; }
+}
+function newConversation(){
+  speechSynthesis.cancel();
+  state.history = []; LS.set("history", []);
+  renderScenarios(); renderAll(); opener();
+}
+
+/* ---------- input ---------- */
+$("#send").onclick = () => { const t=$("#text").value; $("#text").value=""; send(t); };
+$("#text").addEventListener("keydown", e => { if(e.key==="Enter"){ e.preventDefault(); $("#send").click(); } });
+$("#newBtn").onclick = () => { if(!state.history.length || confirm("Start a new conversation?")) newConversation(); };
+
+/* ---------- settings ---------- */
+function openSettings(){
+  $("#apiKey").value = cfg.apiKey; $("#model").value = cfg.model; $("#level").value = cfg.level;
+  $("#rate").value = cfg.rate; $("#rateVal").textContent = cfg.rate+"×";
+  $("#speakFix").checked = cfg.speakFix; $("#autoTr").checked = cfg.autoTr; $("#autoMic").checked = cfg.autoMic; $("#formality").value = cfg.formality;
+  loadVoices();
+  $("#settings").showModal();
+}
+$("#rate").oninput = e => $("#rateVal").textContent = e.target.value+"×";
+$("#setBtn").onclick = openSettings;
+$("#testVoice").onclick = () => { const v=$("#voice").value; const old=cfg.voice; cfg.voice=v; speak("Cześć! Jak się masz? Porozmawiamy trochę po polsku?", +$("#rate").value); cfg.voice=old; };
+$("#saveSet").onclick = () => {
+  const hadKey = !!cfg.apiKey, oldLevel = cfg.level, oldForm = cfg.formality;
+  Object.assign(cfg, {
+    apiKey:$("#apiKey").value.trim(), model:$("#model").value.trim()||"gemini-flash-latest",
+    level:$("#level").value, voice:$("#voice").value, rate:+$("#rate").value,
+    speakFix:$("#speakFix").checked, autoTr:$("#autoTr").checked, autoMic:$("#autoMic").checked, formality:$("#formality").value
+  });
+  LS.set("cfg", cfg); $("#settings").close();
+  if((!hadKey && cfg.apiKey && !state.history.length) || oldLevel!==cfg.level || oldForm!==cfg.formality) newConversation(); else renderAll();
+};
+
+/* ---------- boot ---------- */
+renderScenarios(); renderAll();
+if(!cfg.apiKey){
+  sys("Welcome! Tap ⚙︎ and paste a free Gemini API key to start talking.");
+} else if(!state.history.length){ opener(); }
+if("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(()=>{});
+</script>
+</body>
+</html>
