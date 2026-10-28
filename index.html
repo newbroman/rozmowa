@@ -45,9 +45,9 @@ header button{background:transparent;border:1px solid rgba(255,255,255,.5);color
 footer{border-top:1px solid var(--line);background:var(--card);padding:.6rem;padding-bottom:max(.6rem,env(safe-area-inset-bottom))}
 #interim{min-height:1.2em;color:var(--muted);font-size:.9rem;padding:0 .3rem .4rem;font-style:italic}
 .row{display:flex;gap:.5rem;align-items:center}
-#text{flex:1;border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:999px;padding:.65rem .9rem;font-size:1rem}
-#send{border:none;background:var(--brand);color:#fff;border-radius:999px;padding:.65rem .9rem;font-size:.95rem}
-#mic{width:64px;height:64px;flex:none;border-radius:50%;border:none;background:var(--brand);color:#fff;font-size:1.6rem;box-shadow:0 2px 8px rgba(0,0,0,.2)}
+#text{flex:1;min-width:0;border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:999px;padding:.65rem .9rem;font-size:1rem}
+#send{flex:none;border:none;background:var(--brand);color:#fff;border-radius:999px;padding:.65rem .9rem;font-size:.95rem}
+#mic{width:56px;height:56px;flex:none;border-radius:50%;border:none;background:var(--brand);color:#fff;font-size:1.6rem;box-shadow:0 2px 8px rgba(0,0,0,.2)}
 #mic.listening{background:var(--err);animation:pulse 1s infinite}
 #mic:disabled{opacity:.5}
 @keyframes pulse{50%{transform:scale(1.07)}}
