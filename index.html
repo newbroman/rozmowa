@@ -86,11 +86,17 @@ dialog input,dialog select{width:100%;padding:.55rem;border:1px solid var(--line
 
 <dialog id="settings">
   <h2>Settings</h2>
-  <label for="apiKey">Gemini API key</label>
-  <input id="apiKey" type="password" placeholder="AIza…" autocomplete="off">
-  <p class="hint">Free from <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>. Stored only on this device.</p>
+  <label for="provider">AI provider</label>
+  <select id="provider">
+    <option value="gemini">Google Gemini</option>
+    <option value="openrouter">OpenRouter</option>
+    <option value="openai">OpenAI</option>
+  </select>
+  <label for="apiKey" id="keyLabel">API key</label>
+  <input id="apiKey" type="password" autocomplete="off">
+  <p class="hint" id="keyHint"></p>
   <label for="model">Model</label>
-  <input id="model" placeholder="gemini-flash-latest">
+  <input id="model">
   <label for="level">Your level</label>
   <select id="level">
     <option value="beginner">Początkujący (beginner)</option>
@@ -144,9 +150,25 @@ const state = {
   busy: false, listening: false
 };
 const cfg = Object.assign({
-  apiKey:"", model:"gemini-flash-latest", level:"beginner", voice:"", rate:0.95,
+  apiKey:"", model:"gemini-flash-latest", provider:"gemini", keys:{}, models:{}, level:"beginner", voice:"", rate:0.95,
   speakFix:true, autoTr:false, autoMic:false, formality:"auto"
 }, LS.get("cfg", {}));
+
+/* ---------- AI providers ---------- */
+const PROVIDERS = {
+  gemini:{name:"Gemini", ph:"AIza…", model:"gemini-flash-latest",
+    hint:'Free from <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>.'},
+  openrouter:{name:"OpenRouter", ph:"sk-or-…", model:"openrouter/free", url:"https://openrouter.ai/api/v1/chat/completions",
+    hint:'From <a href="https://openrouter.ai/keys" target="_blank" rel="noopener">openrouter.ai/keys</a>. <b>openrouter/free</b> picks a free model each time; or name one, e.g. <b>openai/gpt-5.4-mini</b> or <b>anthropic/claude-haiku-4.5</b> (needs credit).'},
+  openai:{name:"OpenAI", ph:"sk-…", model:"gpt-5.4-mini", url:"https://api.openai.com/v1/chat/completions",
+    hint:'From <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">platform.openai.com/api-keys</a> (pay as you go).'}
+};
+// Older versions kept a single Gemini key: carry it over.
+cfg.keys = cfg.keys || {}; cfg.models = cfg.models || {};
+if(cfg.apiKey && !cfg.keys.gemini){ cfg.keys.gemini = cfg.apiKey; cfg.models.gemini = cfg.model; }
+const prov = () => PROVIDERS[cfg.provider] ? cfg.provider : "gemini";
+const key = () => (cfg.keys[prov()]||"").trim();
+const modelName = () => (cfg.models[prov()]||PROVIDERS[prov()].model).trim();
 
 /* ---------- scenarios ---------- */
 function renderScenarios(){
@@ -306,12 +328,48 @@ const SCHEMA = {
   required:["hasError","corrected","explanation","reply","translation"]
 };
 
+async function callAI(contents){
+  return prov()==="gemini" ? callGemini(contents) : callChat(contents);
+}
+
+/* OpenAI and OpenRouter share the same chat-completions format. */
+async function callChat(contents){
+  const p = PROVIDERS[prov()], model = modelName();
+  const messages = [{role:"system", content: systemPrompt() + `
+Your whole answer must be one JSON object with exactly these keys: hasError (boolean), corrected (string), explanation (string), reply (string), translation (string). No markdown, no code fences.`}]
+    .concat(contents.map(c=>({role: c.role==="model" ? "assistant" : "user", content: c.parts.map(x=>x.text).join("")})));
+  const body = {model, messages};
+  if(prov()==="openai"){
+    body.response_format = {type:"json_schema", json_schema:{name:"turn", strict:true, schema:{
+      type:"object", additionalProperties:false, required:SCHEMA.required,
+      properties:Object.fromEntries(Object.entries(SCHEMA.properties).map(([k,v])=>[k,{type:v.type.toLowerCase()}]))}}};
+    if(/^gpt-5|^o\d/.test(model)) body.reasoning_effort = "low"; else body.temperature = 0.8;
+  } else {
+    body.response_format = {type:"json_object"}; body.temperature = 0.8;
+  }
+  const headers = {"Content-Type":"application/json", "Authorization":"Bearer "+key()};
+  if(prov()==="openrouter"){ headers["HTTP-Referer"] = location.origin + location.pathname; headers["X-Title"] = "Rozmowa"; }
+  const r = await fetch(p.url, {method:"POST", headers, body: JSON.stringify(body)});
+  const data = await r.json().catch(()=>({}));
+  if(!r.ok) throw new Error(data?.error?.message || ("HTTP "+r.status));
+  const txt = data?.choices?.[0]?.message?.content || "";
+  if(!txt) throw new Error("Empty response from " + p.name);
+  return parseTurn(txt);
+}
+/* Models without a strict JSON mode sometimes wrap it in fences or chat around it. */
+function parseTurn(txt){
+  try{ return JSON.parse(txt); }catch{}
+  const m = txt.match(/\{[\s\S]*\}/);
+  if(m) try{ return JSON.parse(m[0]); }catch{}
+  return {hasError:false, corrected:"", explanation:"", reply:txt.trim(), translation:""};
+}
+
 async function callGemini(contents){
-  const model = (cfg.model||"gemini-flash-latest").trim();
+  const model = modelName();
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
   const r = await fetch(url, {
     method:"POST",
-    headers:{"Content-Type":"application/json","x-goog-api-key":cfg.apiKey},
+    headers:{"Content-Type":"application/json","x-goog-api-key":key()},
     body: JSON.stringify({
       systemInstruction:{parts:[{text:systemPrompt()}]},
       contents,
@@ -335,13 +393,13 @@ function toContents(extraUser){
 async function send(text){
   text = (text||"").trim();
   if(!text || state.busy) return;
-  if(!cfg.apiKey){ openSettings(); sys("Add your free Gemini API key first.", true); return; }
+  if(!key()){ openSettings(); sys("Add your " + PROVIDERS[prov()].name + " API key first.", true); return; }
   state.busy = true; $("#mic").disabled = true;
   const um = {role:"user", text};
   state.history.push(um); renderMsg(um); scrollDown();
   const thinking = el("sys","…"); chat.appendChild(thinking); scrollDown();
   try{
-    const out = await callGemini(toContents());
+    const out = await callAI(toContents());
     thinking.remove();
     um.fix = {hasError:!!out.hasError && !!out.corrected, corrected:out.corrected||"", explanation:out.explanation||""};
     // re-render the user's message with its correction
@@ -363,11 +421,11 @@ async function send(text){
 }
 
 async function opener(){
-  if(!cfg.apiKey) return;
+  if(!key()) return;
   state.busy = true;
   const thinking = el("sys","…"); chat.appendChild(thinking);
   try{
-    const out = await callGemini([{role:"user", parts:[{text:"(Start the conversation yourself in character. There is no learner message to correct: set hasError false, corrected and explanation empty.)"}]}]);
+    const out = await callAI([{role:"user", parts:[{text:"(Start the conversation yourself in character. There is no learner message to correct: set hasError false, corrected and explanation empty.)"}]}]);
     thinking.remove();
     const bm = {role:"model", text:out.reply, tr:out.translation};
     state.history.push(bm); renderMsg(bm); scrollDown(); LS.set("history", state.history);
@@ -388,30 +446,42 @@ $("#newBtn").onclick = () => { if(!state.history.length || confirm("Start a new 
 
 /* ---------- settings ---------- */
 function openSettings(){
-  $("#apiKey").value = cfg.apiKey; $("#model").value = cfg.model; $("#level").value = cfg.level;
+  $("#provider").value = prov(); showProvider(prov()); $("#level").value = cfg.level;
   $("#rate").value = cfg.rate; $("#rateVal").textContent = cfg.rate+"×";
   $("#speakFix").checked = cfg.speakFix; $("#autoTr").checked = cfg.autoTr; $("#autoMic").checked = cfg.autoMic; $("#formality").value = cfg.formality;
   loadVoices();
   $("#settings").showModal();
 }
+// Each provider keeps its own key and model; switching the menu shows that provider's.
+let shown = null;
+function keepShown(){ if(shown){ cfg.keys[shown] = $("#apiKey").value.trim(); cfg.models[shown] = $("#model").value.trim(); } }
+function showProvider(p){
+  shown = p; const d = PROVIDERS[p];
+  $("#keyLabel").textContent = d.name + " API key";
+  $("#apiKey").placeholder = d.ph; $("#apiKey").value = cfg.keys[p]||"";
+  $("#model").placeholder = d.model; $("#model").value = cfg.models[p]||"";
+  $("#keyHint").innerHTML = d.hint + " Stored only on this device.";
+}
+$("#provider").onchange = e => { keepShown(); showProvider(e.target.value); };
 $("#rate").oninput = e => $("#rateVal").textContent = e.target.value+"×";
 $("#setBtn").onclick = openSettings;
 $("#testVoice").onclick = () => { const v=$("#voice").value; const old=cfg.voice; cfg.voice=v; speak("Cześć! Jak się masz? Porozmawiamy trochę po polsku?", +$("#rate").value); cfg.voice=old; };
 $("#saveSet").onclick = () => {
-  const hadKey = !!cfg.apiKey, oldLevel = cfg.level, oldForm = cfg.formality;
+  const hadKey = !!key(), oldLevel = cfg.level, oldForm = cfg.formality;
+  keepShown();
   Object.assign(cfg, {
-    apiKey:$("#apiKey").value.trim(), model:$("#model").value.trim()||"gemini-flash-latest",
+    provider:$("#provider").value,
     level:$("#level").value, voice:$("#voice").value, rate:+$("#rate").value,
     speakFix:$("#speakFix").checked, autoTr:$("#autoTr").checked, autoMic:$("#autoMic").checked, formality:$("#formality").value
   });
   LS.set("cfg", cfg); $("#settings").close();
-  if((!hadKey && cfg.apiKey && !state.history.length) || oldLevel!==cfg.level || oldForm!==cfg.formality) newConversation(); else renderAll();
+  if((!hadKey && key() && !state.history.length) || oldLevel!==cfg.level || oldForm!==cfg.formality) newConversation(); else renderAll();
 };
 
 /* ---------- boot ---------- */
 renderScenarios(); renderAll();
-if(!cfg.apiKey){
-  sys("Welcome! Tap ⚙︎ and paste a free Gemini API key to start talking.");
+if(!key()){
+  sys("Welcome! Tap ⚙︎, choose an AI provider and paste its API key to start talking.");
 } else if(!state.history.length){ opener(); }
 if("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(()=>{});
 </script>
